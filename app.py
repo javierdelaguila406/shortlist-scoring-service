@@ -1,14 +1,8 @@
 ﻿from flask import Flask, request, jsonify
-import spacy
+from difflib import SequenceMatcher
+import re
 
 app = Flask(__name__)
-
-try:
-    nlp = spacy.load("es_core_news_sm")
-except OSError:
-    import os
-    os.system("python -m spacy download es_core_news_sm")
-    nlp = spacy.load("es_core_news_sm")
 
 @app.route('/score', methods=['POST'])
 def score_cv():
@@ -24,31 +18,27 @@ def score_cv():
     return jsonify({'score': score})
 
 def calcular_score(cv_text, plaza_titulo, plaza_desc):
-    cv_doc = nlp(cv_text.lower())
-    plaza_doc = nlp((plaza_titulo + ' ' + plaza_desc).lower())
+    cv_lower = cv_text.lower()
+    plaza_full = (plaza_titulo + ' ' + plaza_desc).lower()
     
-    cv_keywords = set()
-    plaza_keywords = set()
+    # Extraer palabras clave (4+ caracteres)
+    cv_words = set(re.findall(r'\b\w{4,}\b', cv_lower))
+    plaza_words = set(re.findall(r'\b\w{4,}\b', plaza_full))
     
-    for token in cv_doc:
-        if token.pos_ in ['NOUN', 'PROPN', 'ADJ', 'VERB']:
-            cv_keywords.add(token.text)
-    
-    for token in plaza_doc:
-        if token.pos_ in ['NOUN', 'PROPN', 'ADJ', 'VERB']:
-            plaza_keywords.add(token.text)
-    
-    if len(plaza_keywords) == 0:
+    if not plaza_words:
         return 20
     
-    matches = len(cv_keywords.intersection(plaza_keywords))
-    coverage = matches / len(plaza_keywords)
+    # Calcular coincidencias
+    matches = len(cv_words.intersection(plaza_words))
+    coverage = matches / len(plaza_words)
+    
+    # Score base
     score = 30 + (coverage * 50)
     
-    if any(word in cv_text.lower() for word in ['años', 'years', 'experiencia']):
+    # Bonos
+    if any(word in cv_lower for word in ['años', 'years', 'experiencia', 'experience']):
         score += 10
-    
-    if any(word in cv_text.lower() for word in ['licenciatura', 'degree', 'carrera', 'técnico']):
+    if any(word in cv_lower for word in ['licenciatura', 'degree', 'carrera', 'técnico', 'bachelor']):
         score += 10
     
     return min(100, max(20, score))
